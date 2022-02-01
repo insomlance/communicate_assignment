@@ -9,3 +9,4 @@ edition = "2021"
 serde = {version = "1.0.135", features = ["derive"]}
 serde_json = {version = "1.0.78", default-features = false, features = ["alloc"]}
 log = "0.4.14"
+tokio = {version = "1", features = ["full"]}

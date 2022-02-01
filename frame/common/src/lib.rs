@@ -1,7 +1,12 @@
 use serde::{Serialize, de::DeserializeOwned};
 use log::error;
+use tokio::runtime::Runtime;
 
 pub mod data;
+
+pub fn get_runtime() -> Runtime {
+    tokio::runtime::Runtime::new().unwrap()
+}
 
 pub fn parse_message_list<T>(raw_msg: &str) -> Vec<T>
 where

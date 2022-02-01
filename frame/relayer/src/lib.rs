@@ -13,13 +13,13 @@ use tokio::{
     sync::{broadcast::{Sender, self}, mpsc::Receiver},
 };
 
-struct RegisterInfo
+pub struct RegisterInfo
 //where
 //    T: Send + 'static + Serialize + DeserializeOwned+ Router<String> + Message + Clone,
 {
-    addr: Box<String>,
-    name: Box<String>,
-    group: Box<String>,
+    pub addr: Box<String>,
+    pub name: Box<String>,
+    pub group: Box<String>,
     //_marker: PhantomData<T>,
 }
 
@@ -80,7 +80,7 @@ type RouteTable<M> = Arc<Mutex<HashMap<String, BcMsgSender<M>>>>;
 type BcMsgSender<M> = tokio::sync::broadcast::Sender<M>;
 type BcMsgReceiver<M> = tokio::sync::broadcast::Receiver<M>;
 
-async fn listen_relayer_register<T>(mut clients_rx: Receiver<RegisterInfo>) -> Result<(), Box<dyn Error>> 
+pub async fn listen_relayer_register<T>(mut clients_rx: Receiver<RegisterInfo>) -> Result<(), Box<dyn Error>> 
 where
     T: Send + 'static + Serialize + DeserializeOwned + Router<String> + Message + Clone,
 {
@@ -148,7 +148,7 @@ where
     Ok(())
 }
 
-async fn do_receive<T>(mut route_table: RouteTable<T>, mut reader: OwnedReadHalf)
+async fn do_receive<T>(route_table: RouteTable<T>, mut reader: OwnedReadHalf)
 where
     T: Send + 'static + Serialize + DeserializeOwned + Router<String> + Message + Clone,
 {
@@ -183,7 +183,7 @@ where
     }
 }
 
-fn channel_send<T>(mut sender: &Sender<T>, item: T) {
+fn channel_send<T>(sender: &Sender<T>, item: T) {
     if let Err(error) = sender.send(item) {
         error!("relayer channel transfer failed,error={}", error);
     }

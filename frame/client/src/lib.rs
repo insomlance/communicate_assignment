@@ -13,17 +13,17 @@ use tokio::{
     sync::mpsc::{Receiver, Sender},
 };
 
-struct LaunchInfo<T>
+pub struct LaunchInfo<T>
 where
     T: Send + 'static + Serialize + DeserializeOwned,
 {
-    name: Box<String>,
-    addr: Box<String>,
-    input: Box<Receiver<T>>,
-    output: Box<Sender<T>>,
+    pub name: Box<String>,
+    pub addr: Box<String>,
+    pub input: Box<Receiver<T>>,
+    pub output: Box<Sender<T>>,
 }
 
-async fn listen_clients_register<T>(
+pub async fn listen_clients_register<T>(
     mut clients_rx: Receiver<LaunchInfo<T>>,
 ) -> Result<(), Box<dyn Error>>
 where
