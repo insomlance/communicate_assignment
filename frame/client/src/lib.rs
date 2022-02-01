@@ -1,7 +1,9 @@
 use std::error::Error;
 
+use common::parse_message_list;
 use log::{debug, error, info};
 use serde::{de::DeserializeOwned, Serialize};
+
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{
@@ -29,7 +31,7 @@ where
 {
     let future = tokio::spawn(async move {
         while let Some(lauch_info) = clients_rx.recv().await {
-            info!("have receive new register={}", lauch_info.addr);
+            info!("client have receive new register={}", lauch_info.addr);
             tokio::spawn(async move {
                 let res = client_listen(
                     &lauch_info.addr,
@@ -40,7 +42,7 @@ where
                 .await;
                 if let Err(error) = res {
                     error!(
-                        "error to listen to addr: {},error = {}",
+                        "client error to listen to addr: {},error = {}",
                         &lauch_info.addr, error
                     );
                 } else {
@@ -55,6 +57,7 @@ where
             "error happen when listen clients to register bind ,error = {}",
             error
         );
+        return Err(Box::new(error));
     }
     Ok(())
 }
@@ -90,7 +93,7 @@ where
     T: Send + 'static + Serialize + DeserializeOwned,
 {
     while let Some(raw_msg) = input.recv().await {
-        let res=serde_json::to_string(&raw_msg);
+        let res = serde_json::to_string(&raw_msg);
         match res {
             Ok(mut serialized) => {
                 serialized.push_str("/*1^/");
@@ -99,7 +102,7 @@ where
                     error!("sender error to write to stream; error = {}", error);
                 }
             }
-            Err(error) => error!("sender get message error,error={}", error),
+            Err(error) => error!("sender serialize message error,error={}", error),
         }
     }
 }
@@ -122,24 +125,6 @@ where
             }
         }
     }
-}
-
-fn parse_message_list<T>(raw_msg: &str) -> Vec<T>
-where
-    T: Serialize + DeserializeOwned,
-{
-    let mut res: Vec<T> = Vec::new();
-    let json_list: Vec<&str> = raw_msg.split("/*1^/").filter(|f| f.len() > 0).collect();
-    json_list.into_iter().for_each(|json| {
-        let ans = serde_json::from_str(json);
-        if let Err(error) = &ans {
-            error!("parse json error,json={},error={}", json, error);
-            return;
-        }
-        let parsed: T = ans.unwrap();
-        res.push(parsed);
-    });
-    res
 }
 
 #[cfg(test)]

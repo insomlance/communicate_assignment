@@ -28,6 +28,7 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 name = "client"
 version = "0.1.0"
 dependencies = [
+ "common",
  "log",
  "serde",
  "serde_json",
@@ -38,6 +39,7 @@ dependencies = [
 name = "common"
 version = "0.1.0"
 dependencies = [
+ "log",
  "serde",
  "serde_json",
 ]
@@ -221,6 +223,13 @@ dependencies = [
 [[package]]
 name = "relayer"
 version = "0.1.0"
+dependencies = [
+ "common",
+ "log",
+ "serde",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "ryu"
