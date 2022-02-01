@@ -80,8 +80,11 @@ type RouteTable<M> = Arc<Mutex<HashMap<String, BcMsgSender<M>>>>;
 type BcMsgSender<M> = tokio::sync::broadcast::Sender<M>;
 type BcMsgReceiver<M> = tokio::sync::broadcast::Receiver<M>;
 
-async fn listen_relayer_register(mut clients_rx: Receiver<RegisterInfo>) -> Result<(), Box<dyn Error>> {
-    let route_table: Arc<Mutex<HashMap<String, BcMsgSender<BridgeMessage>>>> =
+async fn listen_relayer_register<T>(mut clients_rx: Receiver<RegisterInfo>) -> Result<(), Box<dyn Error>> 
+where
+    T: Send + 'static + Serialize + DeserializeOwned + Router<String> + Message + Clone,
+{
+    let route_table: Arc<Mutex<HashMap<String, BcMsgSender<T>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let future=tokio::spawn(async move {
         while let Some(register_info) = clients_rx.recv().await {
@@ -125,7 +128,7 @@ where
     T: Send + 'static + Serialize + DeserializeOwned + Router<String> + Message + Clone,
 {
     let stream = TcpStream::connect(addr).await?;
-    let (mut reader, mut writer) = stream.into_split();
+    let (reader, writer) = stream.into_split();
 
     debug!("has connect to addr={}", addr);
 
@@ -136,10 +139,10 @@ where
         lock_table.insert(identity, send_tx);
     }
 
-    let write_future = tokio::spawn(async move {
+    tokio::spawn(async move {
         do_send(send_rx, writer).await;
     });
-    let read_future = tokio::spawn(async move {
+    tokio::spawn(async move {
         do_receive::<T>(route_table, reader).await;
     });
     Ok(())
