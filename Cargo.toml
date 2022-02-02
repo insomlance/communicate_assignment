@@ -11,3 +11,6 @@ members = [
     'custom',
     'frame',
 ]
+
+[dependencies]
+biz = {version = "0.1.0", path = "biz"}

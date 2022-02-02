@@ -32,10 +32,6 @@ enum Command {
     },
 }
 
-fn main() {
-   launch_service();
-}
-
 pub fn launch_service() {
     let mut input = String::new();
     let stdin = io::stdin();
@@ -171,6 +167,25 @@ fn parse_command(input: &str) -> Result<Command, &str> {
         _ => return Err("command not support"),
     }
     Ok(command)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::parse_command;
+
+    #[test]
+    fn test_input(){
+        let mut res=parse_command("AddClient{A1;A;127.0.0.1:8787}");
+        assert_eq!(true,res.is_ok());
+        res=parse_command("AddjClient{A1;A;127.0.0.1:8787}");
+        assert_eq!(true,res.is_err());
+        res=parse_command("AddClient{A1,A;127.0.0.1:8787}");
+        assert_eq!(true,res.is_err());
+        res=parse_command("AddClient {A1;A;127.0.0.1:8787}");
+        assert_eq!(true,res.is_err());
+        res=parse_command("SendMsg{A1;A2;this is A1, to A group}");
+        assert_eq!(true,res.is_ok());
+    }
 }
 
 

@@ -68,6 +68,9 @@ dependencies = [
 [[package]]
 name = "communicate_assignment"
 version = "0.1.0"
+dependencies = [
+ "biz",
+]
 
 [[package]]
 name = "custom"
