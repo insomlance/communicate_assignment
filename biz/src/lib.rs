@@ -1,21 +1,21 @@
 use std::{
     collections::HashMap,
-    error::Error,
     io::{self, BufRead},
     sync::{Arc, Mutex},
-    thread,
-    time::Duration,
 };
 
-use client::{listen_clients_register, LaunchInfo};
+use client::{LaunchInfo};
 use common::{data::BridgeMessage, get_runtime};
-use custom::{send_msg, base::{register_custom_tasks, get_relayer_register, get_client_regiser, register_node}};
-use log::{debug, error, info};
-use relayer::{listen_relayer_register, RegisterInfo};
+use custom::{
+    base::{register_node, CustomTaskInfo},
+    get_client_regiser, get_relayer_register, register_custom_tasks, send_msg,
+};
+
+use relayer::{RegisterInfo};
 use threadpool::{Builder, ThreadPool};
 use tokio::{
     runtime::Runtime,
-    sync::mpsc::{self, Receiver, Sender},
+    sync::mpsc::{Sender},
 };
 
 #[derive(Debug)]
@@ -56,8 +56,8 @@ pub fn launch_service() {
 
     loop {
         input.clear();
-        if let Err(error)=handle.read_line(&mut input){
-            println!("read error {}",error.to_string());
+        if let Err(error) = handle.read_line(&mut input) {
+            println!("read error {}", error.to_string());
             continue;
         }
         let result = parse_command(&input);
@@ -71,57 +71,89 @@ pub fn launch_service() {
         let command = result.unwrap();
         match command {
             Command::AddClient { name, group, addr } => {
-                if let Err(msg) = check_fresh_client(&group_map, &name) {
-                    error!("fresh client check failed for {}", msg);
-                    println!("add fresh client failed, {}", msg);
-                    continue;
-                };
-                let clone_pool = pool.clone();
-                let input = register_node(
-                    &name,
-                    &group,
-                    &addr,
-                    client_register.clone(),
-                    relayer_register.clone(),
+                if let Err(error) = add_client(
+                    &rt,
+                    name,
+                    group,
+                    addr,
+                    &mut group_map,
+                    pool.clone(),
                     custom_task_register.clone(),
-                    clone_pool,
-                );
-                input_map.insert(*name.clone(), input);
-                group_map.insert(*name.clone(), *group);
+                    relayer_register.clone(),
+                    client_register.clone(),
+                    &mut input_map,
+                ) {
+                    println!("add client failed,error={}", error);
+                };
             }
             Command::SendMsg { from, to, content } => {
-                let name = from.clone().to_string();
-                let sender = input_map.get(&name);
-                let from_group = group_map.get(&name);
-                if sender.is_none() || from_group.is_none(){
-                    println!("sender do not exist or init!");
-                    continue;
+                if let Err(error) =
+                    send_message(&rt, from, to, content, &mut input_map, &mut group_map)
+                {
+                    println!("send msg failed,error={}", error);
                 }
-
-                let to_name = to.clone().to_string();
-                let to_group = group_map.get(&to_name);
-                if to_group.is_none(){
-                    println!("receiver do not exist or init!");
-                    continue;
-                }
-
-                let sender=sender.unwrap();
-                let from_group=from_group.unwrap();
-                let to_group=to_group.unwrap();
-
-                let bridge_message = BridgeMessage {
-                    from_name: Box::new(name),
-                    from_group: Box::new(from_group.to_string()),
-                    to_name: Box::new(to_name),
-                    to_group: Box::new(to_group.to_string()),
-                    message: content,
-                    error_msg: None,
-                };
-
-                send_msg(sender, &rt, bridge_message);
             }
         }
     }
+}
+
+fn add_client(
+    rt: &Runtime,
+    name: Box<String>,
+    group: Box<String>,
+    addr: Box<String>,
+    group_map: &mut HashMap<String, String>,
+    pool: Arc<Mutex<ThreadPool>>,
+    custom_task_register: Sender<CustomTaskInfo>,
+    relayer_register: Sender<RegisterInfo>,
+    client_register: Sender<LaunchInfo<BridgeMessage>>,
+    input_map: &mut HashMap<String, Sender<BridgeMessage>>,
+) -> Result<(), String> {
+    check_fresh_client(&group_map, &name)?;
+    register_node(
+        rt,
+        &name,
+        &group,
+        &addr,
+        client_register.clone(),
+        relayer_register.clone(),
+        custom_task_register.clone(),
+        pool,
+    )
+    .map(|input| input_map.insert(*name.clone(), input))?;
+    group_map.insert(*name.clone(), *group);
+    Ok(())
+}
+
+fn send_message(
+    rt: &Runtime,
+    from: Box<String>,
+    to: Box<String>,
+    content: Box<String>,
+    input_map: &mut HashMap<String, Sender<BridgeMessage>>,
+    group_map: &mut HashMap<String, String>,
+) -> Result<(), String> {
+    let name = from.clone().to_string();
+    let to_name = to.clone().to_string();
+    let sender = input_map.get(&name).ok_or("sender do not exist or init!")?;
+    let from_group = group_map
+        .get(&name)
+        .ok_or("sender group do not exist or init!")?;
+    let to_group = group_map
+        .get(&to_name)
+        .ok_or("receiver do not exist or init!")?;
+
+    let bridge_message = BridgeMessage {
+        from_name: Box::new(name),
+        from_group: Box::new(from_group.to_string()),
+        to_name: Box::new(to_name),
+        to_group: Box::new(to_group.to_string()),
+        message: content,
+        error_msg: None,
+    };
+
+    send_msg(sender, &rt, bridge_message);
+    Ok(())
 }
 
 fn check_fresh_client(map: &HashMap<String, String>, name: &str) -> Result<(), String> {
@@ -174,18 +206,16 @@ mod tests {
     use crate::parse_command;
 
     #[test]
-    fn test_input(){
-        let mut res=parse_command("AddClient{A1;A;127.0.0.1:8787}");
-        assert_eq!(true,res.is_ok());
-        res=parse_command("AddjClient{A1;A;127.0.0.1:8787}");
-        assert_eq!(true,res.is_err());
-        res=parse_command("AddClient{A1,A;127.0.0.1:8787}");
-        assert_eq!(true,res.is_err());
-        res=parse_command("AddClient {A1;A;127.0.0.1:8787}");
-        assert_eq!(true,res.is_err());
-        res=parse_command("SendMsg{A1;A2;this is A1, to A group}");
-        assert_eq!(true,res.is_ok());
+    fn test_input() {
+        let mut res = parse_command("AddClient{A1;A;127.0.0.1:8787}");
+        assert_eq!(true, res.is_ok());
+        res = parse_command("AddjClient{A1;A;127.0.0.1:8787}");
+        assert_eq!(true, res.is_err());
+        res = parse_command("AddClient{A1,A;127.0.0.1:8787}");
+        assert_eq!(true, res.is_err());
+        res = parse_command("AddClient {A1;A;127.0.0.1:8787}");
+        assert_eq!(true, res.is_err());
+        res = parse_command("SendMsg{A1;A2;this is A1, to A group}");
+        assert_eq!(true, res.is_ok());
     }
 }
-
-

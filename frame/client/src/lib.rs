@@ -129,11 +129,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{thread, time::Duration};
+    use std::{
+        thread::{self, Thread},
+        time::Duration,
+    };
 
     use tokio::{
         io::AsyncWriteExt,
-        net::TcpStream,
+        net::{TcpListener, TcpStream},
         runtime::Runtime,
         sync::mpsc::{self, Receiver, Sender},
     };
@@ -205,5 +208,19 @@ mod tests {
             input_tx2.send("message from 2".to_string()).await;
         });
         loop {}
+    }
+
+    #[test]
+    fn test_bind() {
+        let rt = get_runtime();
+        rt.block_on(async {
+            TcpListener::bind("127.0.0.1:8979").await;
+            println!("bind1");
+        });
+        thread::sleep(Duration::from_secs(2));
+        rt.block_on(async {
+            TcpListener::bind("127.0.0.1:8979").await;
+            println!("bind2");
+        });
     }
 }

@@ -15,3 +15,6 @@ custom = {version = "0.1.0", path = "../custom"}
 threadpool = "1.8.1"
 tokio = {version = "1", features = ["full"]}
 log = "0.4.14"
+rsa = "0.5.0"
+rand="0.8.4"
+rust-crypto="0.2.36"

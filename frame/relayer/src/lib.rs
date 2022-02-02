@@ -1,17 +1,52 @@
 use std::{
     collections::HashMap,
+    error::Error,
     hash::Hash,
-    sync::{Arc, Mutex}, error::Error,
+    sync::{Arc, Mutex}, thread,
 };
 
-use common::{parse_message_list, data::BridgeMessage};
+use common::{data::BridgeMessage, parse_message_list, get_runtime};
 use log::{debug, error, info};
+use rsa::RsaPublicKey;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::{tcp::{OwnedReadHalf, OwnedWriteHalf}, TcpStream},
-    sync::{broadcast::{Sender, self}, mpsc::Receiver},
+    net::{
+        tcp::{OwnedReadHalf, OwnedWriteHalf},
+        TcpStream,
+    },
+    sync::{
+        broadcast::{self},
+        mpsc::{Receiver, self, Sender},
+    },
 };
+
+pub struct Relayer<Contract>
+where
+    Contract: Send + 'static + Serialize + DeserializeOwned + Router<String> + Message + Clone,
+{
+    route_table: Option<RouteTable<Contract>>,
+    pub_keys: Option<PubKeyTable>,
+}
+
+impl<Contract> Relayer<Contract> 
+where
+    Contract: Send + 'static + Serialize + DeserializeOwned + Router<String> + Message + Clone,
+{
+    pub fn launch_relayer(&mut self)->Result<Sender<RegisterInfo>,String>{
+        self.route_table=Some(Arc::new(Mutex::new(HashMap::new())));
+        self.pub_keys=Some(Arc::new(Mutex::new(HashMap::new())));
+        let rt = get_runtime();
+        let (relayer_register_tx, relayer_register_rx): (Sender<RegisterInfo>, Receiver<RegisterInfo>) =
+            mpsc::channel(32);
+        thread::spawn(move || {
+            rt.block_on(listen_relayer_register::<BridgeMessage>(
+                relayer_register_rx,
+            ))
+        });
+        Ok(relayer_register_tx)
+    }
+}
 
 pub struct RegisterInfo
 //where
@@ -20,6 +55,7 @@ pub struct RegisterInfo
     pub addr: Box<String>,
     pub name: Box<String>,
     pub group: Box<String>,
+    pub pub_key:Option<RsaPublicKey>,
     //_marker: PhantomData<T>,
 }
 
@@ -77,21 +113,24 @@ impl Message for BridgeMessage {
 }
 
 type RouteTable<M> = Arc<Mutex<HashMap<String, BcMsgSender<M>>>>;
+type PubKeyTable = Arc<Mutex<HashMap<String, String>>>;
 type BcMsgSender<M> = tokio::sync::broadcast::Sender<M>;
 type BcMsgReceiver<M> = tokio::sync::broadcast::Receiver<M>;
 
-pub async fn listen_relayer_register<T>(mut clients_rx: Receiver<RegisterInfo>) -> Result<(), Box<dyn Error>> 
+pub async fn listen_relayer_register<T>(
+    mut clients_rx: Receiver<RegisterInfo>,
+) -> Result<(), String>
 where
     T: Send + 'static + Serialize + DeserializeOwned + Router<String> + Message + Clone,
 {
     let route_table: Arc<Mutex<HashMap<String, BcMsgSender<T>>>> =
         Arc::new(Mutex::new(HashMap::new()));
-    let future=tokio::spawn(async move {
+    let future = tokio::spawn(async move {
         while let Some(register_info) = clients_rx.recv().await {
             let route_table = route_table.clone();
             info!("relayer have receive new register={}", register_info.addr);
             tokio::spawn(async move {
-                let res=relayer_connect(
+                let res = relayer_connect(
                     &register_info.addr,
                     route_table,
                     *register_info.get_source_id(),
@@ -103,7 +142,10 @@ where
                         &register_info.addr, error
                     );
                 } else {
-                    println!("success register in relayer end, addr={}", &register_info.addr);
+                    println!(
+                        "success register in relayer end, addr={}",
+                        &register_info.addr
+                    );
                 }
             });
         }
@@ -114,7 +156,7 @@ where
             "error happen when listen clients to register bind ,error = {}",
             error
         );
-        return Err(Box::new(error));
+        return Err("get relayer register error".to_string());
     }
     Ok(())
 }
@@ -143,7 +185,7 @@ where
         do_send(send_rx, writer).await;
     });
     tokio::spawn(async move {
-        do_receive::<T>(route_table, reader).await;
+        do_receive(route_table, reader).await;
     });
     Ok(())
 }
@@ -183,7 +225,7 @@ where
     }
 }
 
-fn channel_send<T>(sender: &Sender<T>, item: T) {
+fn channel_send<T>(sender: &BcMsgSender<T>, item: T) {
     if let Err(error) = sender.send(item) {
         error!("relayer channel transfer failed,error={}", error);
     }
