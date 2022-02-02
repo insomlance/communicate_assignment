@@ -86,7 +86,7 @@ where
         match &self.pub_keys {
             Some(pub_key_map) => {
                 let mut lock = pub_key_map.lock().map_err(|err| err.to_string())?;
-                lock.insert((&register_info.name).to_string(), pub_key);
+                lock.insert((&register_info.get_source_id()).to_string(), pub_key);
             }
             None => return Err("relayer not ready".to_string()),
         }
@@ -257,7 +257,7 @@ async fn do_receive<T>(route_table: RouteTable<T>, pub_keys: PubKeyTable, mut re
 where
     T: Send + 'static + Serialize + DeserializeOwned + Router<String> + Message + Clone,
 {
-    let mut buf = [0; 1024];
+    let mut buf = [0; 4096];
     while let Ok(size) = reader.read(&mut buf).await {
         if size == 0 {
             continue;
@@ -266,7 +266,7 @@ where
         debug!("relayer receive message={}", serialized);
         let mut item_list = parse_message_list::<T>(&serialized);
         while !item_list.is_empty() {
-            let mut parsed = item_list.remove(0);
+            let parsed = item_list.remove(0);
             if let Err(error) = transfer_msg(route_table.clone(), pub_keys.clone(), parsed) {
                 error!("transfer msg failed,msg={},error={}", serialized, error);
             }
@@ -283,13 +283,13 @@ where
     T: Send + 'static + Serialize + DeserializeOwned + Router<String> + Message + Clone,
 {
     let id = parsed.get_target_id();
+    let source_id = parsed.get_source_id();
     let mut route_table = route_table.lock().map_err(|err| err.to_string())?;
     let pub_keys = pub_keys.lock().map_err(|err| err.to_string())?;
-    verify_signature(&parsed, pub_keys.get(&id))?;
+    verify_signature(&parsed, pub_keys.get(&source_id))?;
     if let Some(sender) = route_table.get_mut(&id) {
         channel_send(sender, parsed)
     } else {
-        let source_id = parsed.get_source_id();
         let sender = route_table
             .get_mut(&source_id)
             .ok_or("relayer can't find both source and target")?;

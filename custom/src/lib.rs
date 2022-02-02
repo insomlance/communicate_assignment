@@ -1,11 +1,9 @@
-use std::{sync::MutexGuard, thread};
+use std::{sync::MutexGuard};
 
-use base::{CustomTaskInfo, listen_custom_tasks};
-use client::{LaunchInfo, listen_clients_register};
-use common::{data::BridgeMessage, get_runtime};
-use relayer::{RegisterInfo, listen_relayer_register, Relayer};
+use common::{data::BridgeMessage};
+use relayer::{Relayer};
 use threadpool::ThreadPool;
-use tokio::{sync::mpsc::{Sender, self, Receiver}, runtime::Runtime};
+use tokio::{sync::mpsc::{Sender}, runtime::Runtime};
 
 pub mod base;
 
@@ -62,15 +60,6 @@ fn message_to_c(msg:&str){
     println!("MsgToC: do some task for group c");
 }
 
-pub fn register_custom_tasks() -> Sender<CustomTaskInfo> {
-    let rt=get_runtime();
-    let (tx, mut rx) = mpsc::channel(8);
-    thread::spawn(move || {
-        rt.block_on(listen_custom_tasks(rx));
-    });
-    tx
-}
-
 pub fn get_relayer() -> Result<Relayer<BridgeMessage>,String>{
     let mut relayer=Relayer::<BridgeMessage>::new();
     relayer.launch();
@@ -79,31 +68,6 @@ pub fn get_relayer() -> Result<Relayer<BridgeMessage>,String>{
     }
     Ok(relayer)
 }
-
-// pub fn get_relayer_register() -> Sender<RegisterInfo> {
-//     let rt = get_runtime();
-//     let (relayer_register_tx, relayer_register_rx): (Sender<RegisterInfo>, Receiver<RegisterInfo>) =
-//         mpsc::channel(32);
-//     thread::spawn(move || {
-//         rt.block_on(listen_relayer_register::<BridgeMessage>(
-//             relayer_register_rx,
-//         ));
-//     });
-//     relayer_register_tx
-// }
-
-pub fn get_client_regiser() -> Sender<LaunchInfo<BridgeMessage>> {
-    let rt = get_runtime();
-    let (all_clients_tx, all_clients_rx): (
-        Sender<LaunchInfo<BridgeMessage>>,
-        Receiver<LaunchInfo<BridgeMessage>>,
-    ) = mpsc::channel(32);
-    thread::spawn(move || {
-        rt.block_on(listen_clients_register(all_clients_rx));
-    });
-    all_clients_tx
-}
-
 
 #[cfg(test)]
 mod tests {

@@ -111,7 +111,7 @@ async fn do_receive<T>(output: Sender<T>, mut reader: OwnedReadHalf, who: String
 where
     T: Send + 'static + Serialize + DeserializeOwned,
 {
-    let mut buf = [0; 1024];
+    let mut buf = [0; 4096];
     while let Ok(size) = reader.read(&mut buf).await {
         if size != 0 {
             let serialized = String::from_utf8_lossy(&mut buf[0..size]);
