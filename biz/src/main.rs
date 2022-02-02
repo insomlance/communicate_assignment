@@ -33,10 +33,10 @@ enum Command {
 }
 
 fn main() {
-    println!("Hello, world!");
+   launch_service();
 }
 
-fn launch_service() {
+pub fn launch_service() {
     let mut input = String::new();
     let stdin = io::stdin();
     let mut handle = stdin.lock();
@@ -59,6 +59,7 @@ fn launch_service() {
     let rt = get_runtime();
 
     loop {
+        input.clear();
         if let Err(error)=handle.read_line(&mut input){
             println!("read error {}",error.to_string());
             continue;
@@ -67,7 +68,6 @@ fn launch_service() {
         match result {
             Err(error) => {
                 println!("{}", error);
-                input.clear();
                 continue;
             }
             Ok(_) => (),
@@ -125,7 +125,6 @@ fn launch_service() {
                 send_msg(sender, &rt, bridge_message);
             }
         }
-        input.clear();
     }
 }
 
