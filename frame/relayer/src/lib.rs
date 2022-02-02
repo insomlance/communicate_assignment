@@ -2,10 +2,11 @@ use std::{
     collections::HashMap,
     error::Error,
     hash::Hash,
-    sync::{Arc, Mutex}, thread,
+    sync::{Arc, Mutex},
+    thread,
 };
 
-use common::{data::BridgeMessage, parse_message_list, get_runtime};
+use common::{data::BridgeMessage, get_runtime, parse_message_list, verify};
 use log::{debug, error, info};
 use rsa::RsaPublicKey;
 use serde::{de::DeserializeOwned, Serialize};
@@ -17,7 +18,7 @@ use tokio::{
     },
     sync::{
         broadcast::{self},
-        mpsc::{Receiver, self, Sender},
+        mpsc::{self, Receiver, Sender},
     },
 };
 
@@ -27,24 +28,78 @@ where
 {
     route_table: Option<RouteTable<Contract>>,
     pub_keys: Option<PubKeyTable>,
+    register: Option<Sender<RegisterInfo>>,
 }
 
-impl<Contract> Relayer<Contract> 
+impl<Contract> Relayer<Contract>
 where
     Contract: Send + 'static + Serialize + DeserializeOwned + Router<String> + Message + Clone,
 {
-    pub fn launch_relayer(&mut self)->Result<Sender<RegisterInfo>,String>{
-        self.route_table=Some(Arc::new(Mutex::new(HashMap::new())));
-        self.pub_keys=Some(Arc::new(Mutex::new(HashMap::new())));
+    pub fn new() -> Relayer<Contract> {
+        Relayer {
+            route_table: None,
+            pub_keys: None,
+            register: None,
+        }
+    }
+    pub fn launch(&mut self) {
+        self.route_table = Some(Arc::new(Mutex::new(HashMap::new())));
+        self.pub_keys = Some(Arc::new(Mutex::new(HashMap::new())));
+        let clone_route_table = self.route_table.as_ref().unwrap().clone();
+        let clone_pub_keys = self.pub_keys.as_ref().unwrap().clone();
         let rt = get_runtime();
-        let (relayer_register_tx, relayer_register_rx): (Sender<RegisterInfo>, Receiver<RegisterInfo>) =
-            mpsc::channel(32);
+        let (relayer_register_tx, relayer_register_rx): (
+            Sender<RegisterInfo>,
+            Receiver<RegisterInfo>,
+        ) = mpsc::channel(32);
         thread::spawn(move || {
-            rt.block_on(listen_relayer_register::<BridgeMessage>(
+            rt.block_on(listen_relayer_register::<Contract>(
                 relayer_register_rx,
+                clone_route_table,
+                clone_pub_keys,
             ))
         });
-        Ok(relayer_register_tx)
+        self.register = Some(relayer_register_tx);
+    }
+
+    pub fn is_ready(&self) -> bool {
+        match self.route_table {
+            None => return false,
+            _ => (),
+        }
+        match self.pub_keys {
+            None => return false,
+            _ => (),
+        }
+        match self.register {
+            None => return false,
+            _ => (),
+        }
+        true
+    }
+
+    pub async fn register_node(
+        &self,
+        register_info: RegisterInfo,
+        pub_key: RsaPublicKey,
+    ) -> Result<(), String> {
+        match &self.pub_keys {
+            Some(pub_key_map) => {
+                let mut lock = pub_key_map.lock().map_err(|err| err.to_string())?;
+                lock.insert((&register_info.name).to_string(), pub_key);
+            }
+            None => return Err("relayer not ready".to_string()),
+        }
+        match &self.register {
+            Some(register) => {
+                register
+                    .send(register_info)
+                    .await
+                    .map_err(|err| err.to_string())?;
+            }
+            None => return Err("register not exist".to_string()),
+        }
+        Ok(())
     }
 }
 
@@ -55,7 +110,6 @@ pub struct RegisterInfo
     pub addr: Box<String>,
     pub name: Box<String>,
     pub group: Box<String>,
-    pub pub_key:Option<RsaPublicKey>,
     //_marker: PhantomData<T>,
 }
 
@@ -92,6 +146,8 @@ where
 
 pub trait Message {
     fn set_error_msg(&mut self, error_msg: Box<String>);
+
+    fn get_signature(&self) -> Option<&Vec<u8>>;
 }
 
 impl Router<String> for BridgeMessage {
@@ -110,29 +166,35 @@ impl Message for BridgeMessage {
     fn set_error_msg(&mut self, error_msg: Box<String>) {
         self.error_msg = Some(error_msg);
     }
+
+    fn get_signature(&self) -> Option<&Vec<u8>> {
+        self.sig.as_ref()
+    }
 }
 
 type RouteTable<M> = Arc<Mutex<HashMap<String, BcMsgSender<M>>>>;
-type PubKeyTable = Arc<Mutex<HashMap<String, String>>>;
+type PubKeyTable = Arc<Mutex<HashMap<String, RsaPublicKey>>>;
 type BcMsgSender<M> = tokio::sync::broadcast::Sender<M>;
 type BcMsgReceiver<M> = tokio::sync::broadcast::Receiver<M>;
 
 pub async fn listen_relayer_register<T>(
     mut clients_rx: Receiver<RegisterInfo>,
+    route_table: RouteTable<T>,
+    pub_keys: PubKeyTable,
 ) -> Result<(), String>
 where
     T: Send + 'static + Serialize + DeserializeOwned + Router<String> + Message + Clone,
 {
-    let route_table: Arc<Mutex<HashMap<String, BcMsgSender<T>>>> =
-        Arc::new(Mutex::new(HashMap::new()));
     let future = tokio::spawn(async move {
         while let Some(register_info) = clients_rx.recv().await {
             let route_table = route_table.clone();
+            let pub_keys = pub_keys.clone();
             info!("relayer have receive new register={}", register_info.addr);
             tokio::spawn(async move {
                 let res = relayer_connect(
                     &register_info.addr,
                     route_table,
+                    pub_keys,
                     *register_info.get_source_id(),
                 )
                 .await;
@@ -164,6 +226,7 @@ where
 async fn relayer_connect<T>(
     addr: &str,
     route_table: RouteTable<T>,
+    pub_keys: PubKeyTable,
     identity: String,
 ) -> Result<(), Box<dyn Error>>
 where
@@ -177,7 +240,7 @@ where
     let (send_tx, send_rx): (BcMsgSender<T>, BcMsgReceiver<T>) = broadcast::channel(16);
 
     {
-        let mut lock_table = route_table.lock().unwrap();
+        let mut lock_table = route_table.lock().map_err(|err| err.to_string())?;
         lock_table.insert(identity, send_tx);
     }
 
@@ -185,44 +248,65 @@ where
         do_send(send_rx, writer).await;
     });
     tokio::spawn(async move {
-        do_receive(route_table, reader).await;
+        do_receive(route_table, pub_keys, reader).await;
     });
     Ok(())
 }
 
-async fn do_receive<T>(route_table: RouteTable<T>, mut reader: OwnedReadHalf)
+async fn do_receive<T>(route_table: RouteTable<T>, pub_keys: PubKeyTable, mut reader: OwnedReadHalf)
 where
     T: Send + 'static + Serialize + DeserializeOwned + Router<String> + Message + Clone,
 {
     let mut buf = [0; 1024];
     while let Ok(size) = reader.read(&mut buf).await {
-        if size != 0 {
-            let serialized = String::from_utf8_lossy(&mut buf[0..size]);
-            debug!("relayer receive message={}", serialized);
-            let mut item_list = parse_message_list::<T>(&serialized);
-            while !item_list.is_empty() {
-                let mut parsed = item_list.remove(0);
-                let id = parsed.get_target_id();
-                {
-                    let mut route_table = route_table.lock().unwrap();
-                    if let Some(sender) = route_table.get_mut(&id) {
-                        channel_send(sender, parsed)
-                    } else {
-                        let source_id = parsed.get_source_id();
-                        if let Some(sender) = route_table.get_mut(&source_id) {
-                            parsed.set_error_msg(Box::new("can't find target".to_string()));
-                            channel_send(sender, parsed)
-                        } else {
-                            error!(
-                                "relayer can't find both source and target,msg={}",
-                                serialized
-                            );
-                        }
-                    }
-                }
+        if size == 0 {
+            continue;
+        }
+        let serialized = String::from_utf8_lossy(&mut buf[0..size]);
+        debug!("relayer receive message={}", serialized);
+        let mut item_list = parse_message_list::<T>(&serialized);
+        while !item_list.is_empty() {
+            let mut parsed = item_list.remove(0);
+            if let Err(error) = transfer_msg(route_table.clone(), pub_keys.clone(), parsed) {
+                error!("transfer msg failed,msg={},error={}", serialized, error);
             }
         }
     }
+}
+
+fn transfer_msg<T>(
+    route_table: RouteTable<T>,
+    pub_keys: PubKeyTable,
+    mut parsed: T,
+) -> Result<(), String>
+where
+    T: Send + 'static + Serialize + DeserializeOwned + Router<String> + Message + Clone,
+{
+    let id = parsed.get_target_id();
+    let mut route_table = route_table.lock().map_err(|err| err.to_string())?;
+    let pub_keys = pub_keys.lock().map_err(|err| err.to_string())?;
+    verify_signature(&parsed, pub_keys.get(&id))?;
+    if let Some(sender) = route_table.get_mut(&id) {
+        channel_send(sender, parsed)
+    } else {
+        let source_id = parsed.get_source_id();
+        let sender = route_table
+            .get_mut(&source_id)
+            .ok_or("relayer can't find both source and target")?;
+        parsed.set_error_msg(Box::new("can't find target".to_string()));
+        channel_send(sender, parsed)
+    }
+    Ok(())
+}
+
+fn verify_signature<T>(item: &T, public_key: Option<&RsaPublicKey>) -> Result<(), String>
+where
+    T: Message + Router<String>,
+{
+    let public_key = public_key.ok_or("miss public key")?;
+    let sign = item.get_signature().ok_or("miss signature")?;
+    verify(&item.get_source_id(), public_key, sign)?;
+    Ok(())
 }
 
 fn channel_send<T>(sender: &BcMsgSender<T>, item: T) {

@@ -8,5 +8,5 @@ pub struct BridgeMessage {
     pub to_group: Box<String>,
     pub message: Box<String>,
     pub error_msg: Option<Box<String>>,
-    pub sig:Vec<u8>,
+    pub sig:Option<Vec<u8>>,
 }

@@ -4,19 +4,17 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use client::{LaunchInfo};
-use common::{data::BridgeMessage, get_runtime};
+use client::LaunchInfo;
+use common::{data::BridgeMessage, get_rsa, get_runtime, sign};
 use custom::{
     base::{register_node, CustomTaskInfo},
-    get_client_regiser, get_relayer_register, register_custom_tasks, send_msg,
+    get_client_regiser, get_relayer, register_custom_tasks, send_msg,
 };
 
-use relayer::{RegisterInfo};
+use relayer::{RegisterInfo, Relayer};
+use rsa::{PublicKey, RsaPrivateKey};
 use threadpool::{Builder, ThreadPool};
-use tokio::{
-    runtime::Runtime,
-    sync::mpsc::{Sender},
-};
+use tokio::{runtime::Runtime, sync::mpsc::Sender};
 
 #[derive(Debug)]
 enum Command {
@@ -38,11 +36,12 @@ pub fn launch_service() {
     let mut handle = stdin.lock();
 
     let custom_task_register = register_custom_tasks();
-    let relayer_register = get_relayer_register();
+    let relayer = get_relayer().unwrap();
     let client_register = get_client_regiser();
     let mut input_map: HashMap<String, Sender<BridgeMessage>> = HashMap::new();
     /// name->group
     let mut group_map: HashMap<String, String> = HashMap::new();
+    let mut priv_keys: HashMap<String, RsaPrivateKey> = HashMap::new();
 
     //custom thread pool
     let pool = Arc::new(Mutex::new(
@@ -79,16 +78,17 @@ pub fn launch_service() {
                     &mut group_map,
                     pool.clone(),
                     custom_task_register.clone(),
-                    relayer_register.clone(),
+                    &relayer,
                     client_register.clone(),
                     &mut input_map,
+                    &mut priv_keys,
                 ) {
                     println!("add client failed,error={}", error);
                 };
             }
             Command::SendMsg { from, to, content } => {
                 if let Err(error) =
-                    send_message(&rt, from, to, content, &mut input_map, &mut group_map)
+                    send_message(&rt, from, to, content, &mut input_map, &mut group_map,&mut priv_keys)
                 {
                     println!("send msg failed,error={}", error);
                 }
@@ -105,23 +105,31 @@ fn add_client(
     group_map: &mut HashMap<String, String>,
     pool: Arc<Mutex<ThreadPool>>,
     custom_task_register: Sender<CustomTaskInfo>,
-    relayer_register: Sender<RegisterInfo>,
+    relayer: &Relayer<BridgeMessage>,
     client_register: Sender<LaunchInfo<BridgeMessage>>,
     input_map: &mut HashMap<String, Sender<BridgeMessage>>,
+    priv_keys:&mut HashMap<String, RsaPrivateKey>,
 ) -> Result<(), String> {
+
     check_fresh_client(&group_map, &name)?;
+    let (pri_key, pub_key) = get_rsa()?;
+
     register_node(
         rt,
         &name,
         &group,
         &addr,
         client_register.clone(),
-        relayer_register.clone(),
+        relayer,
         custom_task_register.clone(),
         pool,
+        pub_key,
     )
     .map(|input| input_map.insert(*name.clone(), input))?;
+
+    priv_keys.insert(*name.clone(), pri_key);
     group_map.insert(*name.clone(), *group);
+
     Ok(())
 }
 
@@ -132,6 +140,7 @@ fn send_message(
     content: Box<String>,
     input_map: &mut HashMap<String, Sender<BridgeMessage>>,
     group_map: &mut HashMap<String, String>,
+    priv_keys:&mut HashMap<String, RsaPrivateKey>,
 ) -> Result<(), String> {
     let name = from.clone().to_string();
     let to_name = to.clone().to_string();
@@ -142,7 +151,9 @@ fn send_message(
     let to_group = group_map
         .get(&to_name)
         .ok_or("receiver do not exist or init!")?;
+    let priv_key=priv_keys.get(&name).ok_or("private key do not exist!")?;
 
+    let sig=sign(&name,priv_key)?;
     let bridge_message = BridgeMessage {
         from_name: Box::new(name),
         from_group: Box::new(from_group.to_string()),
@@ -150,6 +161,7 @@ fn send_message(
         to_group: Box::new(to_group.to_string()),
         message: content,
         error_msg: None,
+        sig: Some(sig),
     };
 
     send_msg(sender, &rt, bridge_message);

@@ -1,4 +1,5 @@
 use common::data::BridgeMessage;
+use rsa::{RsaPublicKey, RsaPrivateKey};
 use std::{
     error::Error,
     sync::{Arc, Mutex},
@@ -10,7 +11,7 @@ use tokio::sync::mpsc::{error::SendError, Receiver, Sender};
 
 use client::LaunchInfo;
 use log::{debug, error, info};
-use relayer::RegisterInfo;
+use relayer::{RegisterInfo, Relayer};
 use tokio::{
     runtime::Runtime,
     sync::mpsc::{self},
@@ -24,9 +25,10 @@ pub fn register_node(
     group: &str,
     addr: &str,
     client_register: Sender<LaunchInfo<BridgeMessage>>,
-    relayer_register: Sender<RegisterInfo>,
+    relayer: &Relayer<BridgeMessage>,
     custom_task_register: Sender<CustomTaskInfo>,
     pool: Arc<Mutex<ThreadPool>>,
+    pub_key: RsaPublicKey,
 ) -> Result<Sender<BridgeMessage>,String> {
     let (input_tx, input_rx): (Sender<BridgeMessage>, Receiver<BridgeMessage>) = mpsc::channel(32);
     let (output_tx, output_rx): (Sender<BridgeMessage>, Receiver<BridgeMessage>) =
@@ -43,9 +45,10 @@ pub fn register_node(
             client_register_info,
             client_register,
             register_info,
-            relayer_register,
+            relayer,
             custom_task_register_info,
             custom_task_register,
+            pub_key,
         ).await
     })?;
 
@@ -56,17 +59,17 @@ async fn register_all(
     client_register_info: LaunchInfo<BridgeMessage>,
     client_register: Sender<LaunchInfo<BridgeMessage>>,
     register_info: RegisterInfo,
-    relayer_register: Sender<RegisterInfo>,
+    relayer: &Relayer<BridgeMessage>,
     custom_task_register_info: CustomTaskInfo,
     custom_task_register: Sender<CustomTaskInfo>,
+    pub_key: RsaPublicKey,
 ) -> Result<(), String> {
     client_register
         .send(client_register_info)
         .await
         .map_err(|err| err.to_string())?;
     thread::sleep(Duration::from_secs(1));
-    relayer_register
-        .send(register_info)
+    relayer.register_node(register_info,pub_key)
         .await
         .map_err(|err| err.to_string())?;
     custom_task_register
@@ -75,11 +78,6 @@ async fn register_all(
         .map_err(|err| err.to_string())?;
     Ok(())
 }
-
-// fn convertSendError<T>(send_error:SendError<T>)->Result<(),String>{
-//     Err("erer");
-//     Ok(())
-// }
 
 fn build_register_info(name: &str, group: &str, addr: &str) -> RegisterInfo {
     RegisterInfo {
