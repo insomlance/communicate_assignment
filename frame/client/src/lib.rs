@@ -130,7 +130,7 @@ where
 #[cfg(test)]
 mod tests {
     use std::{
-        thread::{self, Thread},
+        thread::{self},
         time::Duration,
     };
 

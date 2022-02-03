@@ -5,14 +5,20 @@ use std::{
 };
 
 use client::LaunchInfo;
-use common::{data::BridgeMessage, get_rsa, get_runtime, sign};
+use common::{
+    data::{BridgeMessage, Router},
+    get_rsa, get_runtime, sign,
+};
 use custom::{
-    base::{node::register_node, machine::{register_custom_tasks, get_client_regiser, CustomTaskInfo}},
-     get_relayer, send_msg,
+    base::{
+        machine::{get_client_regiser, register_custom_tasks, CustomTaskInfo},
+        node::register_node,
+    },
+    get_relayer, send_msg,
 };
 
-use relayer::{Relayer, Router};
-use rsa::{RsaPrivateKey};
+use relayer::Relayer;
+use rsa::RsaPrivateKey;
 use threadpool::{Builder, ThreadPool};
 use tokio::{runtime::Runtime, sync::mpsc::Sender};
 
@@ -88,9 +94,15 @@ pub fn launch_service() {
                 };
             }
             Command::SendMsg { from, to, content } => {
-                if let Err(error) =
-                    send_message(&rt, from, to, content, &mut input_map, &mut group_map,&mut priv_keys)
-                {
+                if let Err(error) = send_message(
+                    &rt,
+                    from,
+                    to,
+                    content,
+                    &mut input_map,
+                    &mut group_map,
+                    &mut priv_keys,
+                ) {
                     println!("send msg failed,error={}", error);
                 }
             }
@@ -109,9 +121,8 @@ fn add_client(
     relayer: &Relayer<BridgeMessage>,
     client_register: Sender<LaunchInfo<BridgeMessage>>,
     input_map: &mut HashMap<String, Sender<BridgeMessage>>,
-    priv_keys:&mut HashMap<String, RsaPrivateKey>,
+    priv_keys: &mut HashMap<String, RsaPrivateKey>,
 ) -> Result<(), String> {
-
     check_fresh_client(&group_map, &name)?;
     let (pri_key, pub_key) = get_rsa()?;
 
@@ -139,9 +150,9 @@ fn send_message(
     from: Box<String>,
     to: Box<String>,
     content: Box<String>,
-    input_map: &mut HashMap<String, Sender<BridgeMessage>>,
-    group_map: &mut HashMap<String, String>,
-    priv_keys:&mut HashMap<String, RsaPrivateKey>,
+    input_map: &HashMap<String, Sender<BridgeMessage>>,
+    group_map: &HashMap<String, String>,
+    priv_keys: &HashMap<String, RsaPrivateKey>,
 ) -> Result<(), String> {
     let name = from.clone().to_string();
     let to_name = to.clone().to_string();
@@ -152,7 +163,7 @@ fn send_message(
     let to_group = group_map
         .get(&to_name)
         .ok_or("receiver do not exist or init!")?;
-    let priv_key=priv_keys.get(&name).ok_or("private key do not exist!")?;
+    let priv_key = priv_keys.get(&name).ok_or("private key do not exist!")?;
 
     let mut bridge_message = BridgeMessage {
         from_name: Box::new(name),
@@ -164,8 +175,8 @@ fn send_message(
         sig: None,
     };
 
-    let sig=sign(&bridge_message.get_source_id(),priv_key)?;
-    bridge_message.sig=Some(sig);
+    let sig = sign(&bridge_message.get_source_id(), priv_key)?;
+    bridge_message.sig = Some(sig);
 
     send_msg(sender, &rt, bridge_message);
     Ok(())
@@ -218,6 +229,9 @@ fn parse_command(input: &str) -> Result<Command, &str> {
 
 #[cfg(test)]
 mod tests {
+    use std::{thread, time::Duration};
+
+    use super::*;
     use crate::parse_command;
 
     #[test]
@@ -232,5 +246,90 @@ mod tests {
         assert_eq!(true, res.is_err());
         res = parse_command("SendMsg{A1;A2;this is A1, to A group}");
         assert_eq!(true, res.is_ok());
+    }
+
+    #[test]
+    fn test_func() {
+        let rt = get_runtime();
+        let relayer = get_relayer().unwrap();
+        let custom_task_register = register_custom_tasks();
+        let client_register = get_client_regiser();
+        let mut input_map: HashMap<String, Sender<BridgeMessage>> = HashMap::new();
+        // name->group
+        let mut group_map: HashMap<String, String> = HashMap::new();
+        let mut priv_keys: HashMap<String, RsaPrivateKey> = HashMap::new();
+
+        //custom thread pool
+        let pool = Arc::new(Mutex::new(
+            Builder::new()
+                .num_threads(4)
+                .thread_name(String::from("threadpool"))
+                .build(),
+        ));
+
+        add_client(
+            &rt,
+            Box::new("A1".to_string()),
+            Box::new("A".to_string()),
+            Box::new("127.0.0.1:8787".to_string()),
+            &mut group_map,
+            pool.clone(),
+            custom_task_register.clone(),
+            &relayer,
+            client_register.clone(),
+            &mut input_map,
+            &mut priv_keys,
+        );
+        add_client(
+            &rt,
+            Box::new("B1".to_string()),
+            Box::new("B".to_string()),
+            Box::new("127.0.0.1:9787".to_string()),
+            &mut group_map,
+            pool.clone(),
+            custom_task_register.clone(),
+            &relayer,
+            client_register.clone(),
+            &mut input_map,
+            &mut priv_keys,
+        );
+
+        for i in 0..100 {
+            do_test(&rt, &group_map, client_register.clone(), &input_map, &priv_keys,i);
+        }
+
+        send_message(
+            &rt,
+            Box::new("A1".to_string()),
+            Box::new("A1".to_string()),
+            Box::new("this is a test".to_string()),
+            &input_map,
+            &group_map,
+            &priv_keys,
+        );
+
+        loop {}
+    }
+
+    fn do_test(
+        rt: &Runtime,
+        group_map: &HashMap<String, String>,
+        // pool: Arc<Mutex<ThreadPool>>,
+        // custom_task_register: Sender<CustomTaskInfo>,
+        // relayer: &Relayer<BridgeMessage>,
+        client_register: Sender<LaunchInfo<BridgeMessage>>,
+        input_map: &HashMap<String, Sender<BridgeMessage>>,
+        priv_keys: &HashMap<String, RsaPrivateKey>,
+        seq:u8,
+    ) {
+        send_message(
+            &rt,
+            Box::new("A1".to_string()),
+            Box::new("B1".to_string()),
+            Box::new("this is a test ".to_string()+&seq.to_string()),
+            input_map,
+            group_map,
+            priv_keys,
+        );
     }
 }

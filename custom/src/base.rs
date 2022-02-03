@@ -1,5 +1,5 @@
 use common::data::BridgeMessage;
-use rsa::{RsaPublicKey};
+use rsa::RsaPublicKey;
 use std::{
     error::Error,
     sync::{Arc, Mutex},
@@ -142,9 +142,7 @@ pub mod machine {
 
     async fn listen_custom_tasks(
         mut receiver: Receiver<CustomTaskInfo>,
-    ) -> Result<(), Box<dyn Error>>
-where
-    {
+    ) -> Result<(), Box<dyn Error>> {
         tokio::spawn(async move {
             while let Some(custom_task) = receiver.recv().await {
                 tokio::spawn(async move {

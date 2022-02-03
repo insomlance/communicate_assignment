@@ -1,12 +1,14 @@
 use std::{
     collections::HashMap,
     error::Error,
-    hash::Hash,
     sync::{Arc, Mutex},
     thread,
 };
 
-use common::{data::BridgeMessage, get_runtime, parse_message_list, verify};
+use common::{
+    data::{Message, Router},
+    get_runtime, parse_message_list, verify,
+};
 use log::{debug, error, info};
 use rsa::RsaPublicKey;
 use serde::{de::DeserializeOwned, Serialize};
@@ -122,56 +124,6 @@ impl RegisterInfo
     }
 }
 
-pub trait Router<ID>
-where
-    ID: Eq + Hash,
-{
-    fn get_source_id(&self) -> ID;
-    fn get_target_id(&self) -> ID;
-
-    fn get_source_stream<'a>(
-        &self,
-        route_table: &'a HashMap<ID, OwnedWriteHalf>,
-    ) -> Option<&'a OwnedWriteHalf> {
-        route_table.get(&self.get_source_id())
-    }
-
-    fn get_target_stream<'a>(
-        &self,
-        route_table: &'a HashMap<ID, OwnedWriteHalf>,
-    ) -> Option<&'a OwnedWriteHalf> {
-        route_table.get(&self.get_target_id())
-    }
-}
-
-pub trait Message {
-    fn set_error_msg(&mut self, error_msg: Box<String>);
-
-    fn get_signature(&self) -> Option<&Vec<u8>>;
-}
-
-impl Router<String> for BridgeMessage {
-    fn get_source_id(&self) -> String {
-        let ans: String = self.from_name.to_string() + &(self.from_group.to_string());
-        ans
-    }
-
-    fn get_target_id(&self) -> String {
-        let ans: String = self.to_name.to_string() + &(self.to_group.to_string());
-        ans
-    }
-}
-
-impl Message for BridgeMessage {
-    fn set_error_msg(&mut self, error_msg: Box<String>) {
-        self.error_msg = Some(error_msg);
-    }
-
-    fn get_signature(&self) -> Option<&Vec<u8>> {
-        self.sig.as_ref()
-    }
-}
-
 type RouteTable<M> = Arc<Mutex<HashMap<String, BcMsgSender<M>>>>;
 type PubKeyTable = Arc<Mutex<HashMap<String, RsaPublicKey>>>;
 type BcMsgSender<M> = tokio::sync::broadcast::Sender<M>;
@@ -274,6 +226,24 @@ where
     }
 }
 
+async fn do_send<T>(mut input: BcMsgReceiver<T>, mut writer: OwnedWriteHalf)
+where
+    T: Send + 'static + Serialize + DeserializeOwned + Clone,
+{
+    while let Ok(raw_msg) = input.recv().await {
+        let res = serde_json::to_string(&raw_msg);
+        match res {
+            Ok(mut serialized) => {
+                serialized.push_str("/*1^/");
+                if let Err(error) = writer.write_all(serialized.as_bytes()).await {
+                    error!("relayer sender error to write to stream; error = {}", error);
+                }
+            }
+            Err(error) => error!("relayer sender serialize message error,error={}", error),
+        }
+    }
+}
+
 fn transfer_msg<T>(
     route_table: RouteTable<T>,
     pub_keys: PubKeyTable,
@@ -315,29 +285,48 @@ fn channel_send<T>(sender: &BcMsgSender<T>, item: T) {
     }
 }
 
-async fn do_send<T>(mut input: BcMsgReceiver<T>, mut writer: OwnedWriteHalf)
-where
-    T: Send + 'static + Serialize + DeserializeOwned + Clone,
-{
-    while let Ok(raw_msg) = input.recv().await {
-        let res = serde_json::to_string(&raw_msg);
-        match res {
-            Ok(mut serialized) => {
-                serialized.push_str("/*1^/");
-                if let Err(error) = writer.write_all(serialized.as_bytes()).await {
-                    error!("relayer sender error to write to stream; error = {}", error);
-                }
-            }
-            Err(error) => error!("relayer sender serialize message error,error={}", error),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    use common::{data::BridgeMessage, get_rsa, sign};
+
+    use crate::RouteTable;
+
     #[test]
     fn it_works() {
         let result = 2 + 2;
         assert_eq!(result, 4);
+    }
+
+    #[test]
+    fn test_transfer() {
+        let route_table: RouteTable<BridgeMessage> = Arc::new(Mutex::new(HashMap::new()));
+        let pub_keys: PubKeyTable = Arc::new(Mutex::new(HashMap::new()));
+        let (send_tx, send_rx): (BcMsgSender<BridgeMessage>, BcMsgReceiver<BridgeMessage>) =
+            broadcast::channel(16);
+
+        let rt = get_runtime();
+        let (pr, pu) = get_rsa().unwrap();
+        let a1 = "a1";
+        let sig = sign("a1a", &pr).unwrap();
+        let bmsg = BridgeMessage {
+            from_name: Box::new(a1.to_string()),
+            from_group: Box::new("a".to_string()),
+            to_name: Box::new(a1.to_string()),
+            to_group: Box::new("a".to_string()),
+            message: Box::new("erwrew hihi".to_string()),
+            error_msg: None,
+            sig: Some(sig),
+        };
+
+        route_table
+            .lock()
+            .unwrap()
+            .insert(bmsg.get_source_id(), send_tx);
+
+        pub_keys.lock().unwrap().insert(bmsg.get_source_id(), pu);
+
+        assert_eq!(true, transfer_msg(route_table, pub_keys, bmsg).is_ok());
     }
 }
