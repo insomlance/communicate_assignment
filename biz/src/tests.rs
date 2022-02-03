@@ -94,7 +94,7 @@ fn do_test(
     // pool: Arc<Mutex<ThreadPool>>,
     // custom_task_register: Sender<CustomTaskInfo>,
     // relayer: &Relayer<BridgeMessage>,
-    client_register: Sender<LaunchInfo<BridgeMessage>>,
+    //client_register: Sender<LaunchInfo<BridgeMessage>>,
     input_map: &HashMap<String, Sender<BridgeMessage>>,
     priv_keys: &HashMap<String, RsaPrivateKey>,
     seq: u8,

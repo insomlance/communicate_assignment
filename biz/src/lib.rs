@@ -36,6 +36,7 @@ enum Command {
         to: Box<String>,
         content: Box<String>,
     },
+    Shutdown,
 }
 
 pub fn launch_service() {
@@ -108,6 +109,9 @@ pub fn launch_service() {
                     println!("send msg failed,error={}", error);
                 }
             }
+            Command::Shutdown => {
+                
+            },
         }
     }
 }
