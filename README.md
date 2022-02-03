@@ -51,6 +51,9 @@ AddClient{C1;C;127.0.0.1:7787}
 SendMsg{A2;B2;this is A2, to B group}
 SendMsg{B2;C1;this is B2, to C group}
 ``` 
+Results are like follow
+<img width="441" alt="image" src="https://user-images.githubusercontent.com/29052959/152309962-d81cabc0-0d00-40f2-b407-ccd05ab57bea.png">
+
 
 ## Design
 
