@@ -63,6 +63,7 @@ pub fn launch_service() {
 
     let rt = get_runtime();
 
+    let mut flag: bool = false;
     loop {
         input.clear();
         if let Err(error) = handle.read_line(&mut input) {
@@ -110,9 +111,17 @@ pub fn launch_service() {
                 }
             }
             Command::Shutdown => {
-                
-            },
+                flag = true;
+                break;
+            }
         }
+    }
+
+    if (flag) {
+        drop(relayer);
+        drop(custom_task_register);
+        drop(input_map);
+        drop(client_register);
     }
 }
 

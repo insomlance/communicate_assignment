@@ -64,16 +64,15 @@ fn test_func() {
         &mut priv_keys,
     );
 
-    for i in 0..100 {
-        do_test(
-            &rt,
-            &group_map,
-            client_register.clone(),
-            &input_map,
-            &priv_keys,
-            i,
-        );
-    }
+    // for i in 0..100 {
+    //     do_test(
+    //         &rt,
+    //         &group_map,
+    //         &input_map,
+    //         &priv_keys,
+    //         i,
+    //     );
+    // }
 
     send_message(
         &rt,
