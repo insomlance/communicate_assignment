@@ -1,13 +1,13 @@
 use std::{sync::MutexGuard};
 
 use frame_common::{data::BridgeMessage};
-use frame_relayer::{Relayer};
+use relayer::Relayer;
 use threadpool::ThreadPool;
 use tokio::{sync::mpsc::{Sender}, runtime::Runtime};
 
 pub mod base;
-//mod machine;
-//mod relayer;
+mod machine;
+pub mod relayer;
 
 pub fn receive_msg(message:BridgeMessage,mutex_pool:MutexGuard<ThreadPool>){
     print!("{}: receive msg from {}: ",message.to_name,message.from_name);

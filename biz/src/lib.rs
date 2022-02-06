@@ -14,10 +14,9 @@ use custom::{
         machine::{get_client_regiser, register_custom_tasks, CustomTaskInfo},
         node::register_node,
     },
-    get_relayer, send_msg,
+    get_relayer, send_msg, relayer::Relayer,
 };
 
-use frame_relayer::Relayer;
 use rsa::RsaPrivateKey;
 use threadpool::{Builder, ThreadPool};
 use tokio::{runtime::Runtime, sync::mpsc::Sender};

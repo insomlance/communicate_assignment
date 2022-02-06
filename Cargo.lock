@@ -106,6 +106,8 @@ dependencies = [
  "rand 0.8.4",
  "rsa",
  "rust-crypto",
+ "serde",
+ "serde_json",
  "threadpool",
  "tokio",
 ]

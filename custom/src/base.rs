@@ -10,7 +10,7 @@ use threadpool::ThreadPool;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use frame_client::LaunchInfo;
-use frame_relayer::{RegisterInfo, Relayer};
+use frame_relayer::{RegisterInfo};
 use tokio::{
     runtime::Runtime,
     sync::mpsc::{self},
@@ -19,7 +19,7 @@ use tokio::{
 use crate::receive_msg;
 
 pub mod node {
-    use crate::base::*;
+    use crate::{base::*, relayer::Relayer};
 
     use super::machine::CustomTaskInfo;
 
