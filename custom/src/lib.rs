@@ -6,7 +6,7 @@ use threadpool::ThreadPool;
 use tokio::{sync::mpsc::{Sender}, runtime::Runtime};
 
 pub mod base;
-mod machine;
+pub mod machine;
 pub mod relayer;
 
 pub fn receive_msg(message:BridgeMessage,mutex_pool:MutexGuard<ThreadPool>){

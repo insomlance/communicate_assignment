@@ -11,10 +11,9 @@ use frame_common::{
 };
 use custom::{
     base::{
-        machine::{get_client_regiser, register_custom_tasks, CustomTaskInfo},
         node::register_node,
     },
-    get_relayer, send_msg, relayer::Relayer,
+    get_relayer, send_msg, relayer::Relayer, machine::{register_custom_tasks, get_client_regiser, CustomTaskInfo},
 };
 
 use rsa::RsaPrivateKey;

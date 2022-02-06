@@ -19,9 +19,7 @@ use tokio::{
 use crate::receive_msg;
 
 pub mod node {
-    use crate::{base::*, relayer::Relayer};
-
-    use super::machine::CustomTaskInfo;
+    use crate::{base::*, relayer::Relayer, machine::CustomTaskInfo};
 
     pub fn register_node(
         rt: &Runtime,
@@ -105,59 +103,6 @@ pub mod node {
             name: Box::new(name.to_string()),
             input: Box::new(biz_input),
             output: Box::new(biz_output),
-        }
-    }
-}
-
-pub mod machine {
-    use frame_client::listen_clients_register;
-    use frame_common::get_runtime;
-
-    use super::*;
-    pub struct CustomTaskInfo {
-        pub receiver: Receiver<BridgeMessage>,
-        pub pool: Arc<Mutex<ThreadPool>>,
-    }
-
-    pub fn get_client_regiser() -> Sender<LaunchInfo<BridgeMessage>> {
-        let rt = get_runtime();
-        let (all_clients_tx, all_clients_rx): (
-            Sender<LaunchInfo<BridgeMessage>>,
-            Receiver<LaunchInfo<BridgeMessage>>,
-        ) = mpsc::channel(32);
-        thread::spawn(move || {
-            rt.block_on(listen_clients_register(all_clients_rx));
-        });
-        all_clients_tx
-    }
-
-    pub fn register_custom_tasks() -> Sender<CustomTaskInfo> {
-        let rt = get_runtime();
-        let (tx, rx) = mpsc::channel(8);
-        thread::spawn(move || {
-            rt.block_on(listen_custom_tasks(rx));
-        });
-        tx
-    }
-
-    async fn listen_custom_tasks(
-        mut receiver: Receiver<CustomTaskInfo>,
-    ) -> Result<(), Box<dyn Error>> {
-        tokio::spawn(async move {
-            while let Some(custom_task) = receiver.recv().await {
-                tokio::spawn(async move {
-                    launch_custom_task(custom_task).await;
-                });
-            }
-        })
-        .await;
-        Ok(())
-    }
-
-    async fn launch_custom_task(mut task: CustomTaskInfo) {
-        while let Some(message) = task.receiver.recv().await {
-            let mutex_pool = task.pool.lock().unwrap();
-            receive_msg(message, mutex_pool);
         }
     }
 }
