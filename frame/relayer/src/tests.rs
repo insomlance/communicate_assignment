@@ -1,7 +1,7 @@
 
 use super::*;
 
-use common::{data::BridgeMessage, get_rsa, sign};
+use frame_common::{data::BridgeMessage, get_rsa, sign};
 
 use crate::RouteTable;
 

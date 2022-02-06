@@ -3,7 +3,7 @@ mod tests;
 
 use std::error::Error;
 
-use common::parse_message_list;
+use frame_common::parse_message_list;
 use log::{debug, error, info};
 use serde::{de::DeserializeOwned, Serialize};
 

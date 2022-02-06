@@ -8,7 +8,7 @@ use std::{
     thread,
 };
 
-use common::{
+use frame_common::{
     data::{Message, Router},
     get_runtime, parse_message_list, verify,
 };

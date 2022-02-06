@@ -4,8 +4,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use client::LaunchInfo;
-use common::{
+use frame_client::LaunchInfo;
+use frame_common::{
     data::{BridgeMessage, Router},
     get_rsa, get_runtime, sign,
 };
@@ -17,7 +17,7 @@ use custom::{
     get_relayer, send_msg,
 };
 
-use relayer::Relayer;
+use frame_relayer::Relayer;
 use rsa::RsaPrivateKey;
 use threadpool::{Builder, ThreadPool};
 use tokio::{runtime::Runtime, sync::mpsc::Sender};

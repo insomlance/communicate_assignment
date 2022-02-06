@@ -1,4 +1,4 @@
-use common::data::BridgeMessage;
+use frame_common::data::BridgeMessage;
 use rsa::RsaPublicKey;
 use std::{
     error::Error,
@@ -9,8 +9,8 @@ use std::{
 use threadpool::ThreadPool;
 use tokio::sync::mpsc::{Receiver, Sender};
 
-use client::LaunchInfo;
-use relayer::{RegisterInfo, Relayer};
+use frame_client::LaunchInfo;
+use frame_relayer::{RegisterInfo, Relayer};
 use tokio::{
     runtime::Runtime,
     sync::mpsc::{self},
@@ -110,8 +110,8 @@ pub mod node {
 }
 
 pub mod machine {
-    use client::listen_clients_register;
-    use common::get_runtime;
+    use frame_client::listen_clients_register;
+    use frame_common::get_runtime;
 
     use super::*;
     pub struct CustomTaskInfo {

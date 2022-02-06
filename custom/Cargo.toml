@@ -6,11 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-common = {version = "0.1.0", path = "../frame/common"}
+frame-common = {version = "0.1.0", path = "../frame/common"}
 threadpool = "1.8.1"
 tokio = {version = "1", features = ["full"]}
-relayer = {version = "0.1.0", path = "../frame/relayer"}
-client = {version = "0.1.0", path = "../frame/client"}
+frame-relayer = {version = "0.1.0", path = "../frame/relayer"}
+frame-client = {version = "0.1.0", path = "../frame/client"}
 log = "0.4.14"
 rsa = "0.5.0"
 rand="0.8.4"
