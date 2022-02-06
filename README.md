@@ -84,8 +84,12 @@ There are three roles, relayer, client(machine) and node(user). Node means diffe
   - common: something is universal and utils like rsa
 - custom
   User process part. Can change the structure of modify something if need.
-  - base:
-    It has machine mod and node mod. They process listen work and launch work of machine layer and node respectively. In most circumstances, it don't need to modify.
+  - machine:
+    manage the register of node and do register work of machine.
+  - node:
+    the register work of a node.
+  - relayer
+    the entrance of relayer work and manage state of a relayer.
   - lib:
     It represents the difference of node and group. Accommodate and modify the code to satisfy different need. Most changes will be at here.
 - biz

@@ -6,6 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-common = { version = "0.1.0", path = "common" }
-relayer = { version = "0.1.0", path = "relayer" }
-client = { version = "0.1.0", path = "client" }
+frame-common = { version = "0.1.0", path = "common" }
+frame-relayer = { version = "0.1.0", path = "relayer" }
+frame-client = { version = "0.1.0", path = "client" }

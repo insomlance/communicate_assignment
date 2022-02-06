@@ -1,11 +1,29 @@
-use std::{sync::MutexGuard};
+use std::{sync::MutexGuard, time::Duration};
 
-use common::{data::BridgeMessage};
-use relayer::{Relayer};
+use frame_common::{data::BridgeMessage};
+use machine::Machine;
+use relayer::Relayer;
 use threadpool::ThreadPool;
 use tokio::{sync::mpsc::{Sender}, runtime::Runtime};
 
-pub mod base;
+pub mod machine;
+pub mod relayer;
+mod node;
+
+pub fn register_node(rt:&Runtime,name:&str,group:&str,addr:&str,machine:&mut Machine,relayer:&Relayer<BridgeMessage>)->Result<(),String>{
+    rt.block_on(machine.register_node(relayer,name, group, addr))?;
+    Ok(())
+}
+
+pub fn get_custom()->Result<(Machine,Relayer<BridgeMessage>),String>{
+    let machine=Machine::new();
+    let mut relayer=Relayer::<BridgeMessage>::new();
+    relayer.launch();
+    if !relayer.is_ready(){
+        return Err("launch relayer failed".to_string());
+    }
+    Ok((machine,relayer)) 
+}
 
 pub fn receive_msg(message:BridgeMessage,mutex_pool:MutexGuard<ThreadPool>){
     print!("{}: receive msg from {}: ",message.to_name,message.from_name);

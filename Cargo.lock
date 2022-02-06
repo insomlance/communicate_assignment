@@ -39,14 +39,14 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 name = "biz"
 version = "0.1.0"
 dependencies = [
- "client",
- "common",
  "custom",
+ "frame-client",
+ "frame-common",
+ "frame-relayer",
  "lazy_static",
  "log",
  "rand 0.8.4",
  "regex",
- "relayer",
  "rsa",
  "rust-crypto",
  "threadpool",
@@ -70,33 +70,6 @@ name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
-
-[[package]]
-name = "client"
-version = "0.1.0"
-dependencies = [
- "common",
- "log",
- "rand 0.8.4",
- "rsa",
- "rust-crypto",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "common"
-version = "0.1.0"
-dependencies = [
- "log",
- "rand 0.8.4",
- "rsa",
- "rust-crypto",
- "serde",
- "serde_json",
- "tokio",
-]
 
 [[package]]
 name = "communicate_assignment"
@@ -126,13 +99,15 @@ dependencies = [
 name = "custom"
 version = "0.1.0"
 dependencies = [
- "client",
- "common",
+ "frame-client",
+ "frame-common",
+ "frame-relayer",
  "log",
  "rand 0.8.4",
- "relayer",
  "rsa",
  "rust-crypto",
+ "serde",
+ "serde_json",
  "threadpool",
  "tokio",
 ]
@@ -160,9 +135,50 @@ dependencies = [
 name = "frame"
 version = "0.1.0"
 dependencies = [
- "client",
- "common",
- "relayer",
+ "frame-client",
+ "frame-common",
+ "frame-relayer",
+]
+
+[[package]]
+name = "frame-client"
+version = "0.1.0"
+dependencies = [
+ "frame-common",
+ "log",
+ "rand 0.8.4",
+ "rsa",
+ "rust-crypto",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "frame-common"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "rand 0.8.4",
+ "rsa",
+ "rust-crypto",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "frame-relayer"
+version = "0.1.0"
+dependencies = [
+ "frame-common",
+ "log",
+ "rand 0.8.4",
+ "rsa",
+ "rust-crypto",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -563,20 +579,6 @@ name = "regex-syntax"
 version = "0.6.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
-
-[[package]]
-name = "relayer"
-version = "0.1.0"
-dependencies = [
- "common",
- "log",
- "rand 0.8.4",
- "rsa",
- "rust-crypto",
- "serde",
- "serde_json",
- "tokio",
-]
 
 [[package]]
 name = "rsa"
